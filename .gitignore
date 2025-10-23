@@ -2,3 +2,8 @@ dist
 Releases
 *.exe
 *.csv
+.github/
+.idea/
+bin/
+.DS_Store
+ips_ports.txt

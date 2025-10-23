@@ -3,9 +3,9 @@ package task
 import (
 	//"crypto/tls"
 
+	"github.com/XIU2/CloudflareSpeedTest/core"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -26,7 +26,7 @@ var (
 )
 
 // pingReceived pingTotalTime
-func (p *Ping) httping(ip *net.IPAddr) (int, time.Duration, string) {
+func (p *Ping) httping(ip *core.IpAddress) (int, time.Duration, string) {
 	hc := http.Client{
 		Timeout: time.Second * 2,
 		Transport: &http.Transport{

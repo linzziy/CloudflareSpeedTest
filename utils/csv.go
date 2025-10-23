@@ -3,8 +3,8 @@ package utils
 import (
 	"encoding/csv"
 	"fmt"
+	"github.com/XIU2/CloudflareSpeedTest/core"
 	"log"
-	"net"
 	"os"
 	"strconv"
 	"time"
@@ -37,7 +37,7 @@ func noOutput() bool {
 }
 
 type PingData struct {
-	IP       *net.IPAddr
+	IP       *core.IpAddress
 	Sended   int
 	Received int
 	Delay    time.Duration

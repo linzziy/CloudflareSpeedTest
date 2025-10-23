@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"github.com/XIU2/CloudflareSpeedTest/core"
 	"io"
 	"net"
 	"net/http"
@@ -100,12 +101,12 @@ func TestDownloadSpeed(ipSet utils.PingDelaySet) (speedSet utils.DownloadSpeedSe
 	return
 }
 
-func getDialContext(ip *net.IPAddr) func(ctx context.Context, network, address string) (net.Conn, error) {
+func getDialContext(ip *core.IpAddress) func(ctx context.Context, network, address string) (net.Conn, error) {
 	var fakeSourceAddr string
-	if isIPv4(ip.String()) {
-		fakeSourceAddr = fmt.Sprintf("%s:%d", ip.String(), TCPPort)
+	if isIPv4(ip.Ip.String()) {
+		fakeSourceAddr = fmt.Sprintf("%s:%d", ip.Ip.String(), ip.Port)
 	} else {
-		fakeSourceAddr = fmt.Sprintf("[%s]:%d", ip.String(), TCPPort)
+		fakeSourceAddr = fmt.Sprintf("[%s]:%d", ip.Ip.String(), ip.Port)
 	}
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, network, fakeSourceAddr)
@@ -136,7 +137,7 @@ func printDownloadDebugInfo(ip *net.IPAddr, err error, statusCode int, url, last
 }
 
 // return download Speed
-func downloadHandler(ip *net.IPAddr) (float64, string) {
+func downloadHandler(ip *core.IpAddress) (float64, string) {
 	var lastRedirectURL string // 用于记录最后一次重定向目标，以便在访问错误时输出
 	client := &http.Client{
 		Transport: &http.Transport{DialContext: getDialContext(ip)},
@@ -168,14 +169,14 @@ func downloadHandler(ip *net.IPAddr) (float64, string) {
 	response, err := client.Do(req)
 	if err != nil {
 		if utils.Debug { // 调试模式下，输出更多信息
-			printDownloadDebugInfo(ip, err, 0, URL, lastRedirectURL, response)
+			printDownloadDebugInfo(ip.Ip, err, 0, URL, lastRedirectURL, response)
 		}
 		return 0.0, ""
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 200 {
 		if utils.Debug { // 调试模式下，输出更多信息
-			printDownloadDebugInfo(ip, nil, response.StatusCode, URL, lastRedirectURL, response)
+			printDownloadDebugInfo(ip.Ip, nil, response.StatusCode, URL, lastRedirectURL, response)
 		}
 		return 0.0, ""
 	}
