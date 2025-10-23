@@ -2,8 +2,11 @@ package task
 
 import (
 	"bufio"
+	"encoding/csv"
+	"fmt"
 	"github.com/XIU2/CloudflareSpeedTest/core"
 	"github.com/gookit/goutil/strutil"
+	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -25,6 +28,24 @@ var (
 
 func InitRandSeed() {
 	rand.Seed(time.Now().UnixNano())
+}
+
+// getFieldIndex 从表头获取字段索引
+func getFieldIndex(header []string, fieldName string) int {
+	for i, h := range header {
+		if strings.TrimSpace(h) == fieldName {
+			return i
+		}
+	}
+	return -1
+}
+
+// getField 从行中获取指定索引的值
+func getField(row []string, idx int) string {
+	if idx >= 0 && idx < len(row) {
+		return strings.TrimSpace(row[idx])
+	}
+	return ""
 }
 
 func isIPv4(ip string) bool {
@@ -80,9 +101,16 @@ func (r *IPRanges) appendIPv4(d byte, port int) {
 }
 
 func (r *IPRanges) appendIP(ip net.IP, port int) {
+	ipPort := fmt.Sprintf("%s:%d", ip, port)
+	for _, e := range r.ips { //如果IP和端口环境，去除重复的
+		if e.IpPort == ipPort {
+			return
+		}
+	}
 	r.ips = append(r.ips, &core.IpAddress{
-		Ip:   &net.IPAddr{IP: ip},
-		Port: port,
+		Ip:     &net.IPAddr{IP: ip},
+		Port:   port,
+		IpPort: ipPort,
 	})
 }
 
@@ -183,23 +211,67 @@ func loadIPRanges() []*core.IpAddress {
 			log.Fatal(err)
 		}
 		defer file.Close()
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() { // 循环遍历文件每一行
-			line := strings.TrimSpace(scanner.Text()) // 去除首尾的空白字符（空格、制表符、换行符等）
-			if line == "" {                           // 跳过空行
-				continue
+		if strutil.IsEndOf(IPFile, ".csv") {
+			//在CSV中进行操作
+			data, err := io.ReadAll(file)
+			if err != nil {
+				log.Fatal("读取文件失败:", err)
 			}
-			port := 443
-			if strings.Contains(line, ":") {
-				m := strings.Split(line, ":")
-				line = strings.TrimSpace(m[0])
-				port = strutil.IntOr(m[1], 443)
+			readerCSV := strings.NewReader(string(data))
+			csvReader := csv.NewReader(readerCSV)
+			csvReader.Comma = ','          // 默认逗号分隔
+			csvReader.FieldsPerRecord = -1 // 允许变长记录
+
+			records, err := csvReader.ReadAll()
+			if err != nil {
+				log.Fatal(err)
 			}
-			ranges.parseCIDR(line) // 解析 IP 段，获得 IP、IP 范围、子网掩码
-			if isIPv4(line) {      // 生成要测速的所有 IPv4 / IPv6 地址（单个/随机/全部）
-				ranges.chooseIPv4(port)
-			} else {
-				ranges.chooseIPv6(port)
+
+			if len(records) < 2 {
+				log.Fatal(err)
+			}
+
+			// 第一行是表头，提取关键列索引
+			header := records[0]
+			ipIdx := getFieldIndex(header, "ip")
+			portIdx := getFieldIndex(header, "port")
+
+			for i := 1; i < len(records); i++ {
+				row := records[i]
+				if len(row) < 2 { // 跳过空行
+					continue
+				}
+				ip := getField(row, ipIdx)
+				port := strutil.IntOr(getField(row, portIdx), 443)
+
+				ranges.parseCIDR(ip) // 解析 IP 段，获得 IP、IP 范围、子网掩码
+				if isIPv4(ip) {      // 生成要测速的所有 IPv4 / IPv6 地址（单个/随机/全部）
+					ranges.chooseIPv4(port)
+				} else {
+					ranges.chooseIPv6(port)
+				}
+			}
+
+		} else {
+			//在TXT中进行操作
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() { // 循环遍历文件每一行
+				line := strings.TrimSpace(scanner.Text()) // 去除首尾的空白字符（空格、制表符、换行符等）
+				if line == "" {                           // 跳过空行
+					continue
+				}
+				port := 443
+				if strings.Contains(line, ":") {
+					m := strings.Split(line, ":")
+					line = strings.TrimSpace(m[0])
+					port = strutil.IntOr(m[1], 443)
+				}
+				ranges.parseCIDR(line) // 解析 IP 段，获得 IP、IP 范围、子网掩码
+				if isIPv4(line) {      // 生成要测速的所有 IPv4 / IPv6 地址（单个/随机/全部）
+					ranges.chooseIPv4(port)
+				} else {
+					ranges.chooseIPv6(port)
+				}
 			}
 		}
 	}

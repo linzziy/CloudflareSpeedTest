@@ -6,8 +6,9 @@ import (
 )
 
 type IpAddress struct {
-	Ip   *net.IPAddr
-	Port int
+	Ip     *net.IPAddr
+	Port   int
+	IpPort string
 }
 
 func (ip *IpAddress) String() string {

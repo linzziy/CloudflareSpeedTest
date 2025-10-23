@@ -23,7 +23,7 @@ var (
 	InputMaxLossRate = maxLossRate
 	Output           = defaultOutput
 	PrintNum         = 10
-	Debug            = false // 是否开启调试模式
+	Debug            = true // 是否开启调试模式
 )
 
 // 是否打印测试结果

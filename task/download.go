@@ -2,8 +2,10 @@ package task
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"github.com/XIU2/CloudflareSpeedTest/core"
+	"github.com/gookit/goutil/strutil"
 	"io"
 	"net"
 	"net/http"
@@ -19,7 +21,7 @@ import (
 const (
 	bufferSize                     = 1024
 	defaultURL                     = "https://cf.xiu2.xyz/url"
-	defaultTimeout                 = 10 * time.Second
+	defaultTimeout                 = 5 * time.Second
 	defaultDisableDownload         = false
 	defaultTestNum                 = 10
 	defaultMinSpeed        float64 = 0.0
@@ -58,8 +60,8 @@ func TestDownloadSpeed(ipSet utils.PingDelaySet) (speedSet utils.DownloadSpeedSe
 		utils.Yellow.Println("[信息] 延迟测速结果 IP 数量为 0，跳过下载测速。")
 		return
 	}
-	testNum := TestCount                        // 等待下载测速的队列数量 先默认等于 下载测速数量(-dn）
-	if len(ipSet) < TestCount || MinSpeed > 0 { // 如果延迟测速并过滤后的 IP 数组长度(IP数量) 小于 下载测速数量(-dn），（即 -dn 预期数量是不够的），或者指定了 下载测速下限 (-sl) 条件（这就可能要全部下载测速一遍，直到找齐预期数量或测完为止），则 等待下载测速的队列数量 修正为 IP 数量
+	testNum := TestCount                         // 等待下载测速的队列数量 先默认等于 下载测速数量(-dn）
+	if len(ipSet) < TestCount || MinSpeed >= 0 { // 如果延迟测速并过滤后的 IP 数组长度(IP数量) 小于 下载测速数量(-dn），（即 -dn 预期数量是不够的），或者指定了 下载测速下限 (-sl) 条件（这就可能要全部下载测速一遍，直到找齐预期数量或测完为止），则 等待下载测速的队列数量 修正为 IP 数量
 		testNum = len(ipSet)
 	}
 	if testNum < TestCount { // 如果 等待下载测速的队列数量 小于 下载测速数量(-dn），（显然 -dn 预期数量是不够的），所以 下载测速数量(-dn）修正为 等待下载测速的队列数量
@@ -73,9 +75,17 @@ func TestDownloadSpeed(ipSet utils.PingDelaySet) (speedSet utils.DownloadSpeedSe
 	for i := 0; i < bar_a; i++ {
 		bar_b += " "
 	}
+
 	bar := utils.NewBar(TestCount, bar_b, "")
+	var newIPSet []utils.CloudflareIPData
 	for i := 0; i < testNum; i++ {
 		speed, colo := downloadHandler(ipSet[i].IP)
+		if speed == -1 {
+			//无法使用
+			continue
+		}
+		utils.Green.Println("[发现] " + ipSet[i].IP.String())
+		newIPSet = append(newIPSet, ipSet[i])
 		ipSet[i].DownloadSpeed = speed
 		if ipSet[i].Colo == "" { // 只有当 Colo 是空的时候，才写入，否则代表之前是 httping 测速并获取过了
 			ipSet[i].Colo = colo
@@ -88,13 +98,55 @@ func TestDownloadSpeed(ipSet utils.PingDelaySet) (speedSet utils.DownloadSpeedSe
 				break
 			}
 		}
+
+		if len(newIPSet) == TestCount {
+			break //已结束
+		}
 	}
 	bar.Done()
+
+	//下面使用多线程？？？？
+	//var wg sync.WaitGroup
+	//var mu sync.Mutex
+	//bar := utils.NewBar(TestCount, bar_b, "")
+	//var newIPSet []utils.CloudflareIPData
+	//
+	//sem := make(chan struct{}, 5) // 控制并发数为 5
+	//for i := 0; i < testNum; i++ {
+	//	sem <- struct{}{} // 占用一个槽位
+	//	wg.Add(1)
+	//
+	//	go func(i int) {
+	//		defer wg.Done()
+	//		defer func() { <-sem }() // 释放槽位
+	//
+	//		speed, colo := downloadHandler(ipSet[i].IP)
+	//		if speed == -1 {
+	//			return
+	//		}
+	//
+	//		mu.Lock()
+	//		newIPSet = append(newIPSet, ipSet[i])
+	//		ipSet[i].DownloadSpeed = speed
+	//		if ipSet[i].Colo == "" {
+	//			ipSet[i].Colo = colo
+	//		}
+	//		if speed >= MinSpeed*1024*1024 {
+	//			bar.Grow(1, "")
+	//			speedSet = append(speedSet, ipSet[i])
+	//		}
+	//		mu.Unlock()
+	//	}(i)
+	//}
+	//
+	//wg.Wait()
+	//bar.Done()
+
 	if MinSpeed == 0.00 { // 如果没有指定下载速度下限，则直接返回所有测速数据
-		speedSet = utils.DownloadSpeedSet(ipSet)
+		speedSet = utils.DownloadSpeedSet(newIPSet)
 	} else if utils.Debug && len(speedSet) == 0 { // 如果指定了下载速度下限，且是调试模式下，且没有找到任何一个满足条件的 IP 时，返回所有测速数据，供用户查看当前的测速结果，以便适当调低预期测速条件
 		utils.Yellow.Println("[调试] 没有满足 下载速度下限 条件的 IP，忽略条件返回所有测速数据（方便下次测速时调整条件）。")
-		speedSet = utils.DownloadSpeedSet(ipSet)
+		speedSet = utils.DownloadSpeedSet(newIPSet)
 	}
 	// 按速度排序
 	sort.Sort(speedSet)
@@ -114,7 +166,7 @@ func getDialContext(ip *core.IpAddress) func(ctx context.Context, network, addre
 }
 
 // 统一的请求报错调试输出
-func printDownloadDebugInfo(ip *net.IPAddr, err error, statusCode int, url, lastRedirectURL string, response *http.Response) {
+func printDownloadDebugInfo(ip *core.IpAddress, err error, statusCode int, url, lastRedirectURL string, response *http.Response) {
 	finalURL := url // 默认的最终 URL，这样当 response 为空时也能输出
 	if lastRedirectURL != "" {
 		finalURL = lastRedirectURL // 如果 lastRedirectURL 不是空，说明重定向过，优先输出最后一次要重定向至的目标
@@ -140,11 +192,13 @@ func printDownloadDebugInfo(ip *net.IPAddr, err error, statusCode int, url, last
 func downloadHandler(ip *core.IpAddress) (float64, string) {
 	var lastRedirectURL string // 用于记录最后一次重定向目标，以便在访问错误时输出
 	client := &http.Client{
-		Transport: &http.Transport{DialContext: getDialContext(ip)},
-		Timeout:   Timeout,
+		Transport: &http.Transport{DialContext: getDialContext(ip), TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // 跳过证书验证（测试用）
+		}},
+		Timeout: Timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			lastRedirectURL = req.URL.String() // 记录每次重定向的目标，以便在访问错误时输出
-			if len(via) > 10 {                 // 限制最多重定向 10 次
+			if len(via) > 3 {                  // 限制最多重定向 3 次
 				if utils.Debug { // 调试模式下，输出更多信息
 					utils.Red.Printf("[调试] IP: %s, 下载测速地址重定向次数过多，终止测速，下载测速地址: %s\n", ip.String(), req.URL.String())
 				}
@@ -169,14 +223,28 @@ func downloadHandler(ip *core.IpAddress) (float64, string) {
 	response, err := client.Do(req)
 	if err != nil {
 		if utils.Debug { // 调试模式下，输出更多信息
-			printDownloadDebugInfo(ip.Ip, err, 0, URL, lastRedirectURL, response)
+			printDownloadDebugInfo(ip, err, 0, URL, lastRedirectURL, response)
 		}
-		return 0.0, ""
+		return -1, "" //除了证书外，都不应该发生此错误
 	}
 	defer response.Body.Close()
+	//返回不包含CF的数据，也是错误的
+	isCf := false
+	for key, _ := range response.Header {
+		if strutil.IContains(key, "cf-") {
+			isCf = true
+			break
+		}
+	}
+	if !isCf {
+		return -1, "" //不是CF代理
+	}
 	if response.StatusCode != 200 {
+		if response.StatusCode == 403 {
+			return -1, "" //只要不是403，理论上能用
+		}
 		if utils.Debug { // 调试模式下，输出更多信息
-			printDownloadDebugInfo(ip.Ip, nil, response.StatusCode, URL, lastRedirectURL, response)
+			printDownloadDebugInfo(ip, nil, response.StatusCode, URL, lastRedirectURL, response)
 		}
 		return 0.0, ""
 	}
