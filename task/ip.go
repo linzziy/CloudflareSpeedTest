@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"encoding/csv"
 	"fmt"
-	"github.com/XIU2/CloudflareSpeedTest/core"
-	"github.com/gookit/goutil/strutil"
 	"io"
 	"log"
 	"math/rand"
@@ -14,6 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/XIU2/CloudflareSpeedTest/core"
+	"github.com/gookit/goutil/strutil"
 )
 
 const defaultInputFile = "ip.txt"
@@ -189,11 +190,11 @@ func loadIPRanges() []*core.IpAddress {
 			if IP == "" {              // 跳过空的（即开头、结尾或连续多个 ,, 的情况）
 				continue
 			}
-			port := 443
+			port := TCPPort
 			if strings.Contains(IP, ":") {
 				m := strings.Split(IP, ":")
 				IP = strings.TrimSpace(m[0])
-				port = strutil.IntOr(m[1], 443)
+				port = strutil.IntOr(m[1], TCPPort)
 			}
 			ranges.parseCIDR(IP) // 解析 IP 段，获得 IP、IP 范围、子网掩码
 			if isIPv4(IP) {      // 生成要测速的所有 IPv4 / IPv6 地址（单个/随机/全部）
@@ -242,7 +243,7 @@ func loadIPRanges() []*core.IpAddress {
 					continue
 				}
 				ip := getField(row, ipIdx)
-				port := strutil.IntOr(getField(row, portIdx), 443)
+				port := strutil.IntOr(getField(row, portIdx), TCPPort)
 
 				ranges.parseCIDR(ip) // 解析 IP 段，获得 IP、IP 范围、子网掩码
 				if isIPv4(ip) {      // 生成要测速的所有 IPv4 / IPv6 地址（单个/随机/全部）
@@ -260,11 +261,11 @@ func loadIPRanges() []*core.IpAddress {
 				if line == "" {                           // 跳过空行
 					continue
 				}
-				port := 443
+				port := TCPPort
 				if strings.Contains(line, ":") {
 					m := strings.Split(line, ":")
 					line = strings.TrimSpace(m[0])
-					port = strutil.IntOr(m[1], 443)
+					port = strutil.IntOr(m[1], TCPPort)
 				}
 				ranges.parseCIDR(line) // 解析 IP 段，获得 IP、IP 范围、子网掩码
 				if isIPv4(line) {      // 生成要测速的所有 IPv4 / IPv6 地址（单个/随机/全部）

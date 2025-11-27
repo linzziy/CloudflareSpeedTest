@@ -2,12 +2,13 @@ package task
 
 import (
 	"fmt"
-	"github.com/XIU2/CloudflareSpeedTest/core"
 	"net"
 	"sort"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/XIU2/CloudflareSpeedTest/core"
 
 	"github.com/XIU2/CloudflareSpeedTest/utils"
 )
@@ -16,13 +17,13 @@ const (
 	tcpConnectTimeout = time.Second * 1
 	maxRoutine        = 1000
 	defaultRoutines   = 200
-	//defaultPort       = 443
-	defaultPingTimes = 4
+	defaultPort       = 443
+	defaultPingTimes  = 4
 )
 
 var (
-	Routines = defaultRoutines
-	//TCPPort   int = defaultPort
+	Routines      = defaultRoutines
+	TCPPort   int = defaultPort
 	PingTimes int = defaultPingTimes
 )
 
@@ -78,6 +79,9 @@ func (p *Ping) Run() utils.PingDelaySet {
 	p.wg.Wait()
 	p.bar.Done()
 	sort.Sort(p.csv)
+	for _, csv := range p.csv {
+		utils.Green.Println(csv.PingData)
+	}
 	return p.csv
 }
 

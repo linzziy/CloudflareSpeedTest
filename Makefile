@@ -10,6 +10,9 @@ all: linux-amd64 linux-arm64 macos-amd64 macos-arm64 win64 win32
 linux-amd64:
 	rm -f bin/cfst && GOARCH=amd64 GOOS=linux $(GOBUILD) -o $(BINDIR)/$(NAME)-$@ main.go && upx bin/cfst-linux-amd64 && mv bin/cfst-linux-amd64 bin/cfst
 
+win64:
+	rm -f bin/cfst.exe && GOARCH=amd64 GOOS=windows $(GOBUILD) -o $(BINDIR)/$(NAME)-$@ main.go && upx bin/cfst-win64 && mv bin/cfst-win64 bin/cfst.exe
+
 macos-arm64:
-	GOARCH=arm64 GOOS=darwin $(GOBUILD) -o $(BINDIR)/$(NAME)-$@ main.go
+	rm -f bin/cfst_macos.exe && GOARCH=arm64 GOOS=darwin $(GOBUILD) -o $(BINDIR)/$(NAME)-$@ main.go && mv bin/cfst-macos-arm64 bin/cfst_macos
 
