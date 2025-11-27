@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -262,10 +263,17 @@ func loadIPRanges() []*core.IpAddress {
 					continue
 				}
 				port := TCPPort
+				m, _ := regexp.Compile("\\d+\\.\\d+\\.\\d+\\.\\d+(?:\\:\\d+)?")
+				if m.MatchString(line) {
+					line = m.FindString(line)
+				}
 				if strings.Contains(line, ":") {
 					m := strings.Split(line, ":")
 					line = strings.TrimSpace(m[0])
 					port = strutil.IntOr(m[1], TCPPort)
+				}
+				if !m.MatchString(line) {
+					continue
 				}
 				ranges.parseCIDR(line) // 解析 IP 段，获得 IP、IP 范围、子网掩码
 				if isIPv4(line) {      // 生成要测速的所有 IPv4 / IPv6 地址（单个/随机/全部）
